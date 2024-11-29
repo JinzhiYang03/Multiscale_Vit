@@ -99,14 +99,23 @@ class Embeddings(nn.Module):
     def forward(self, x):
         B = x.shape[0]
         cls_tokens = self.cls_token.expand(B, -1, -1)
-        x = self.patch_embeddings(x)
-        x = x.flatten(2)
-        x = x.transpose(-1, -2)
-        x = torch.cat((cls_tokens, x), dim=1)
-        pos_embed = self.interpolate_positional_embeddings(self.position_embeddings, self.max_paches+1)
-        embeddings = x + pos_embed
-        embeddings = self.dropout(embeddings)
-        return embeddings
+    
+        # Patch embeddings
+        x = self.patch_embeddings(x)  # Shape: [B, hidden_size, h_patches, w_patches]
+        x = x.flatten(2).transpose(-1, -2)  # Shape: [B, n_patches, hidden_size]
+    
+        # Add class token
+        x = torch.cat((cls_tokens, x), dim=1)  # Shape: [B, n_patches+1, hidden_size]
+    
+        # Interpolate positional embeddings dynamically
+        num_patches = x.shape[1]  # Number of patches + 1 for class token
+        pos_embed = self.interpolate_positional_embeddings(self.position_embeddings, num_patches)
+    
+        # Add positional embeddings
+        x += pos_embed
+        x = self.dropout(x)
+        return x
+
 
     def interpolate_positional_embeddings(self, pos_embs, new_max_seq_len):
         # Reshape to add batch and channel dimensions required by interpolate
@@ -291,7 +300,7 @@ class SPP(nn.Module):
 class SPP_Embeddings(nn.Module):
     """Construct the embeddings from CNN + SPP for Vision Transformer."""
     def __init__(self, config, img_size, in_channels=3):
-        super(Embeddings, self).__init__()
+        super(SPP_Embeddings, self).__init__()
 
         self.grid_size = (4, 4)
         self.cnn = PatchCNN(in_channels=in_channels, out_channels=12, kernel_size=4)
@@ -350,7 +359,7 @@ class SPP_Embeddings(nn.Module):
 
 class TransformerSPP(nn.Module):
     def __init__(self, config, img_size, vis):
-        super(Transformer, self).__init__()
+        super(TransformerSPP, self).__init__()
         self.embeddings = SPP_Embeddings(config, img_size=img_size)
         self.encoder = Encoder(config, vis)
 
@@ -362,7 +371,7 @@ class TransformerSPP(nn.Module):
     
 class VisionTransformerSPP(nn.Module):
     def __init__(self, config, img_size=28, num_classes=10, zero_head=False, vis=False):
-        super(VisionTransformer, self).__init__()
+        super(VisionTransformerSPP, self).__init__()
         self.num_classes = num_classes
         self.zero_head = zero_head
         self.classifier = config.classifier
