@@ -291,7 +291,7 @@ class SPP(nn.Module):
 class SPP_Embeddings(nn.Module):
     """Construct the embeddings from CNN + SPP for Vision Transformer."""
     def __init__(self, config, img_size, in_channels=3):
-        super(Embeddings, self).__init__()
+        super(SPP_Embeddings, self).__init__()
 
         self.grid_size = (4, 4)
         self.cnn = PatchCNN(in_channels=in_channels, out_channels=12, kernel_size=4)
@@ -350,7 +350,7 @@ class SPP_Embeddings(nn.Module):
 
 class TransformerSPP(nn.Module):
     def __init__(self, config, img_size, vis):
-        super(Transformer, self).__init__()
+        super(TransformerSPP, self).__init__()
         self.embeddings = SPP_Embeddings(config, img_size=img_size)
         self.encoder = Encoder(config, vis)
 
@@ -362,7 +362,7 @@ class TransformerSPP(nn.Module):
     
 class VisionTransformerSPP(nn.Module):
     def __init__(self, config, img_size=28, num_classes=10, zero_head=False, vis=False):
-        super(VisionTransformer, self).__init__()
+        super(VisionTransformerSPP, self).__init__()
         self.num_classes = num_classes
         self.zero_head = zero_head
         self.classifier = config.classifier
