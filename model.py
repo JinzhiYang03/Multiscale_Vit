@@ -99,14 +99,23 @@ class Embeddings(nn.Module):
     def forward(self, x):
         B = x.shape[0]
         cls_tokens = self.cls_token.expand(B, -1, -1)
-        x = self.patch_embeddings(x)
-        x = x.flatten(2)
-        x = x.transpose(-1, -2)
-        x = torch.cat((cls_tokens, x), dim=1)
-        pos_embed = self.interpolate_positional_embeddings(self.position_embeddings, self.max_paches+1)
-        embeddings = x + pos_embed
-        embeddings = self.dropout(embeddings)
-        return embeddings
+    
+        # Patch embeddings
+        x = self.patch_embeddings(x)  # Shape: [B, hidden_size, h_patches, w_patches]
+        x = x.flatten(2).transpose(-1, -2)  # Shape: [B, n_patches, hidden_size]
+    
+        # Add class token
+        x = torch.cat((cls_tokens, x), dim=1)  # Shape: [B, n_patches+1, hidden_size]
+    
+        # Interpolate positional embeddings dynamically
+        num_patches = x.shape[1]  # Number of patches + 1 for class token
+        pos_embed = self.interpolate_positional_embeddings(self.position_embeddings, num_patches)
+    
+        # Add positional embeddings
+        x += pos_embed
+        x = self.dropout(x)
+        return x
+
 
     def interpolate_positional_embeddings(self, pos_embs, new_max_seq_len):
         # Reshape to add batch and channel dimensions required by interpolate
