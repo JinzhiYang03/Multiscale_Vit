@@ -1,0 +1,51 @@
+11/30/2024 00:13:32 - INFO - __main__ - classifier: token
+hidden_size: 256
+patches:
+  size: !!python/tuple
+  - 7
+  - 7
+transformer:
+  dropout_rate: 0.1
+  mlp_dim: 512
+  num_heads: 4
+  num_layers: 4
+
+11/30/2024 00:13:32 - INFO - __main__ - Training parameters Namespace(name='spp_resized', model_type='Vit_SPP', output_dir='output', img_size=28, random_resize=True, dataset='mnist', train_batch_size=64, eval_batch_size=32, eval_every=1000, patience=5, learning_rate=0.03, weight_decay=0, num_steps=100000, decay_type='cosine', warmup_steps=500, max_grad_norm=1.0, local_rank=-1, seed=42, gradient_accumulation_steps=1, n_gpu=1, device=device(type='cuda'))
+11/30/2024 00:13:32 - INFO - __main__ - Total Parameter: 	2.2M
+11/30/2024 00:13:32 - INFO - __main__ - ***** Running training *****
+11/30/2024 00:13:32 - INFO - __main__ -   Total optimization steps = 100000
+11/30/2024 00:13:32 - INFO - __main__ -   Instantaneous batch size per GPU = 64
+11/30/2024 00:13:32 - INFO - __main__ -   Total train batch size = 64
+11/30/2024 00:13:32 - INFO - __main__ -   Gradient Accumulation steps = 1
+2.181462
+Training (X / X Steps) (loss=X.X):   0%|| 0/938 [00:00<?, ?it/s]Training (X / X Steps) (loss=X.X):   0%|| 0/938 [00:00<?, ?it/s]
+Traceback (most recent call last):
+  File "/home/liliphie/eecs498/Vit/train.py", line 425, in <module>
+    main()
+  File "/home/liliphie/eecs498/Vit/train.py", line 421, in main
+    train(args, model)
+  File "/home/liliphie/eecs498/Vit/train.py", line 304, in train
+    for step, batch in enumerate(epoch_iterator):
+  File "/home/liliphie/eecs498/env/lib/python3.12/site-packages/tqdm/std.py", line 1181, in __iter__
+    for obj in iterable:
+  File "/home/liliphie/eecs498/env/lib/python3.12/site-packages/torch/utils/data/dataloader.py", line 701, in __next__
+    data = self._next_data()
+           ^^^^^^^^^^^^^^^^^
+  File "/home/liliphie/eecs498/env/lib/python3.12/site-packages/torch/utils/data/dataloader.py", line 757, in _next_data
+    data = self._dataset_fetcher.fetch(index)  # may raise StopIteration
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/liliphie/eecs498/env/lib/python3.12/site-packages/torch/utils/data/_utils/fetch.py", line 55, in fetch
+    return self.collate_fn(data)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/liliphie/eecs498/env/lib/python3.12/site-packages/torch/utils/data/_utils/collate.py", line 398, in default_collate
+    return collate(batch, collate_fn_map=default_collate_fn_map)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/liliphie/eecs498/env/lib/python3.12/site-packages/torch/utils/data/_utils/collate.py", line 212, in collate
+    collate(samples, collate_fn_map=collate_fn_map)
+  File "/home/liliphie/eecs498/env/lib/python3.12/site-packages/torch/utils/data/_utils/collate.py", line 155, in collate
+    return collate_fn_map[elem_type](batch, collate_fn_map=collate_fn_map)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/liliphie/eecs498/env/lib/python3.12/site-packages/torch/utils/data/_utils/collate.py", line 272, in collate_tensor_fn
+    return torch.stack(batch, 0, out=out)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: stack expects each tensor to be equal size, but got [3, 81, 81] at entry 0 and [3, 30, 30] at entry 1

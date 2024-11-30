@@ -68,7 +68,7 @@ class RandomScaleTransform:
     def __call__(self, img):
         scale_factor = random.uniform(*self.scale_range)
         new_size = (int(img.size[0] * scale_factor), int(img.size[1] * scale_factor))
-        img = img.resize(new_size, Image.ANTIALIAS)
+        img = img.resize(new_size, Image.LANCZOS)
         return img
 
 def get_loader(args):
@@ -82,19 +82,36 @@ def get_loader(args):
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
     ])
-    transform_train_mnist = transforms.Compose([
-        RandomScaleTransform(scale_range=(1, 8)),  # ONLY USE FOR SPP TRAINING
-        # transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
-        transforms.Grayscale(3),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-    ])
-    transform_test_mnist = transforms.Compose([
-        transforms.Resize((args.img_size, args.img_size)),
-        transforms.Grayscale(3),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-    ])
+    if args.random_resize:
+        transform_train_mnist = transforms.Compose([
+            RandomScaleTransform(scale_range=(1, 4)),  # ONLY USE FOR SPP TRAINING
+            # transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
+            transforms.Grayscale(3),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ])
+        transform_test_mnist = transforms.Compose([
+            RandomScaleTransform(scale_range=(1, 4)),
+            # transforms.Resize((args.img_size, args.img_size)),
+            transforms.Grayscale(3),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ])
+    else:
+        transform_train_mnist = transforms.Compose([
+            # RandomScaleTransform(scale_range=(1, 8)),  # ONLY USE FOR SPP TRAINING
+            transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
+            transforms.Grayscale(3),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ])
+        transform_test_mnist = transforms.Compose([
+            # RandomScaleTransform(scale_range=(1, 8)),
+            transforms.Resize((args.img_size, args.img_size)),
+            transforms.Grayscale(3),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        ])
 
     if args.dataset == "cifar10":
         trainset = datasets.CIFAR10(root="./data",
@@ -348,7 +365,8 @@ def main():
                         help="The output directory where checkpoints will be written.")
     parser.add_argument("--img_size", default=28, type=int,
                         help="Resolution size")
-   
+    parser.add_argument("--random_resize", default=False, type=bool,
+                        help="Random Resize On")
 
     parser.add_argument("--dataset", default="mnist",
                         help="Which downstream task.")
