@@ -12,6 +12,8 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from model import VisionTransformer, VisionTransformerSPP
 import ml_collections
 import math
+import random
+from PIL import Image
 
 def get_b16_config():
     config = ml_collections.ConfigDict()
@@ -59,6 +61,16 @@ class WarmupLinearSchedule(LambdaLR):
             return float(step) / float(max(1, self.warmup_steps))
         return max(0.0, float(self.t_total - step) / float(max(1.0, self.t_total - self.warmup_steps)))
 
+class RandomScaleTransform:
+    def __init__(self, scale_range=(1, 8)):
+        self.scale_range = scale_range
+
+    def __call__(self, img):
+        scale_factor = random.uniform(*self.scale_range)
+        new_size = (int(img.size[0] * scale_factor), int(img.size[1] * scale_factor))
+        img = img.resize(new_size, Image.ANTIALIAS)
+        return img
+
 def get_loader(args):
     transform_train = transforms.Compose([
         transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
@@ -71,7 +83,8 @@ def get_loader(args):
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
     ])
     transform_train_mnist = transforms.Compose([
-        transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
+        RandomScaleTransform(scale_range=(1, 8)),  # ONLY USE FOR SPP TRAINING
+        # transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
         transforms.Grayscale(3),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
