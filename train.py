@@ -250,7 +250,7 @@ def valid(args, model, writer, test_loaders, global_step):
     eval_losses = AverageMeter()
 
     logger.info("***** Running Validation *****")
-    logger.info("  Num steps = %d", len(test_loader))
+    logger.info("  Num steps = %d", len(test_loaders))
     logger.info("  Batch size = %d", args.eval_batch_size)
 
     model.eval()
@@ -337,8 +337,8 @@ def train(args, model):
         model.train()
         if args.model_type == 'Vit_SPP':
             epoch_iterator_ls = []
-            for i in range(len(train_loader_ls)):
-                epoch_iterator = tqdm(train_loader_ls[i],
+            for i in range(len(train_loader)):
+                epoch_iterator = tqdm(train_loader[i],
                                     desc="Training (X / X Steps) (loss=X.X)",
                                     bar_format="{l_bar}{r_bar}",
                                     dynamic_ncols=True,
