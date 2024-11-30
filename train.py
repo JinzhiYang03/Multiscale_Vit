@@ -9,6 +9,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import LambdaLR
 from torchvision import transforms, datasets
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
+from torchvision.transforms.functional import pad
 from model import VisionTransformer, VisionTransformerSPP
 import ml_collections
 import math
@@ -70,6 +71,20 @@ class RandomScaleTransform:
         new_size = (int(img.size[0] * scale_factor), int(img.size[1] * scale_factor))
         img = img.resize(new_size, Image.LANCZOS)
         return img
+
+def pad_collate(batch):
+    max_height = max(item[0].shape[1] for item in batch)
+    max_width = max(item[0].shape[2] for item in batch)
+
+    # pad all images to match max_height and max_width
+    padded_images = []
+    labels = []
+    for img, label in batch:
+        padding = (0, 0, max_width - img.shape[2], max_height - img.shape[1])  # (left, top, right, bottom)
+        padded_images.append(pad(img, padding))
+        labels.append(label)
+
+    return torch.stack(padded_images), torch.tensor(labels)
 
 def get_loader(args):
     transform_train = transforms.Compose([
@@ -139,6 +154,7 @@ def get_loader(args):
     train_loader = DataLoader(trainset,
                               sampler=train_sampler,
                               batch_size=args.train_batch_size,
+                              collate_fn=pad_collate,
                               pin_memory=True)
     test_loader = DataLoader(testset,
                              sampler=test_sampler,
