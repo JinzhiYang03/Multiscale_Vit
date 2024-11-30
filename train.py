@@ -86,7 +86,7 @@ def pad_collate(batch):
 
     return torch.stack(padded_images), torch.tensor(labels)
 
-def get_loader(args):
+def get_loader_helper(args, scale=1):
     transform_train = transforms.Compose([
         transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
         transforms.ToTensor(),
@@ -97,36 +97,49 @@ def get_loader(args):
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
     ])
-    if args.random_resize:
-        transform_train_mnist = transforms.Compose([
-            RandomScaleTransform(scale_range=(1, 4)),  # ONLY USE FOR SPP TRAINING
-            # transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
-            transforms.Grayscale(3),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-        ])
-        transform_test_mnist = transforms.Compose([
-            RandomScaleTransform(scale_range=(1, 4)),
-            # transforms.Resize((args.img_size, args.img_size)),
-            transforms.Grayscale(3),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-        ])
-    else:
-        transform_train_mnist = transforms.Compose([
-            # RandomScaleTransform(scale_range=(1, 8)),  # ONLY USE FOR SPP TRAINING
-            transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
-            transforms.Grayscale(3),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-        ])
-        transform_test_mnist = transforms.Compose([
-            # RandomScaleTransform(scale_range=(1, 8)),
-            transforms.Resize((args.img_size, args.img_size)),
-            transforms.Grayscale(3),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-        ])
+    # if args.random_resize:
+    #     transform_train_mnist = transforms.Compose([
+    #         RandomScaleTransform(scale_range=(1, 4)),  # ONLY USE FOR SPP TRAINING
+    #         # transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
+    #         transforms.Grayscale(3),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+    #     ])
+    #     transform_test_mnist = transforms.Compose([
+    #         RandomScaleTransform(scale_range=(1, 4)),
+    #         # transforms.Resize((args.img_size, args.img_size)),
+    #         transforms.Grayscale(3),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+    #     ])
+    # else:
+    #     transform_train_mnist = transforms.Compose([
+    #         # RandomScaleTransform(scale_range=(1, 8)),  # ONLY USE FOR SPP TRAINING
+    #         transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
+    #         transforms.Grayscale(3),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+    #     ])
+    #     transform_test_mnist = transforms.Compose([
+    #         # RandomScaleTransform(scale_range=(1, 8)),
+    #         transforms.Resize((args.img_size, args.img_size)),
+    #         transforms.Grayscale(3),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+    #     ])
+
+    transform_train_mnist = transforms.Compose([
+        transforms.Resize((args.img_size * scale, args.img_size * scale)),
+        transforms.Grayscale(3),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+    ])
+    transform_test_mnist = transforms.Compose([
+        transforms.Resize((args.img_size, args.img_size)),
+        transforms.Grayscale(3),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+    ])
 
     if args.dataset == "cifar10":
         trainset = datasets.CIFAR10(root="./data",
@@ -147,8 +160,6 @@ def get_loader(args):
                                    download=True,
                                    transform=transform_test_mnist) if args.local_rank in [-1, 0] else None
 
-
-
     train_sampler = RandomSampler(trainset)
     test_sampler = SequentialSampler(testset)
     train_loader = DataLoader(trainset,
@@ -162,6 +173,17 @@ def get_loader(args):
                              pin_memory=True) if testset is not None else None
 
     return train_loader, test_loader
+
+def get_loader(args):
+    train_loaders = []
+    test_loaders = []
+
+    for i in range(1, 5):
+        train_loader, test_loader = get_loader_helper(args, i)
+        train_loaders.append(train_loader)
+        test_loaders.append(test_loader)
+
+    return train_loaders, test_loaders
 
 logger = logging.getLogger(__name__)
 
