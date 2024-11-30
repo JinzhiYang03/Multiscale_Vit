@@ -6,7 +6,7 @@ from sklearn.metrics import accuracy_score
 from tqdm import tqdm
 import ml_collections
 import matplotlib.pyplot as plt
-from train import get_loader
+from train import get_loader_helper
 
 # parser = argparse.ArgumentParser()
 
@@ -99,7 +99,7 @@ def run_inference(args, scaling_factors):
         args.img_size = 28 * scale
         print(f"Running inference with scaled image size: {args.img_size}")
         
-        _, test_loader = get_loader(args)
+        _, test_loader = get_loader_helper(args, 1)
 
         all_preds, all_labels = [], []
         with torch.no_grad():
