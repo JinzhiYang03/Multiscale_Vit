@@ -97,36 +97,6 @@ def get_loader_helper(args, scale=1):
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
     ])
-    # if args.random_resize:
-    #     transform_train_mnist = transforms.Compose([
-    #         RandomScaleTransform(scale_range=(1, 4)),  # ONLY USE FOR SPP TRAINING
-    #         # transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
-    #         transforms.Grayscale(3),
-    #         transforms.ToTensor(),
-    #         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-    #     ])
-    #     transform_test_mnist = transforms.Compose([
-    #         RandomScaleTransform(scale_range=(1, 4)),
-    #         # transforms.Resize((args.img_size, args.img_size)),
-    #         transforms.Grayscale(3),
-    #         transforms.ToTensor(),
-    #         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-    #     ])
-    # else:
-    #     transform_train_mnist = transforms.Compose([
-    #         # RandomScaleTransform(scale_range=(1, 8)),  # ONLY USE FOR SPP TRAINING
-    #         transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
-    #         transforms.Grayscale(3),
-    #         transforms.ToTensor(),
-    #         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-    #     ])
-    #     transform_test_mnist = transforms.Compose([
-    #         # RandomScaleTransform(scale_range=(1, 8)),
-    #         transforms.Resize((args.img_size, args.img_size)),
-    #         transforms.Grayscale(3),
-    #         transforms.ToTensor(),
-    #         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-    #     ])
 
     transform_train_mnist = transforms.Compose([
         transforms.Resize((args.img_size * scale, args.img_size * scale)),
