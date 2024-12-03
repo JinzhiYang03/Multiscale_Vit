@@ -97,36 +97,6 @@ def get_loader_helper(args, scale=1):
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
     ])
-    # if args.random_resize:
-    #     transform_train_mnist = transforms.Compose([
-    #         RandomScaleTransform(scale_range=(1, 4)),  # ONLY USE FOR SPP TRAINING
-    #         # transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
-    #         transforms.Grayscale(3),
-    #         transforms.ToTensor(),
-    #         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-    #     ])
-    #     transform_test_mnist = transforms.Compose([
-    #         RandomScaleTransform(scale_range=(1, 4)),
-    #         # transforms.Resize((args.img_size, args.img_size)),
-    #         transforms.Grayscale(3),
-    #         transforms.ToTensor(),
-    #         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-    #     ])
-    # else:
-    #     transform_train_mnist = transforms.Compose([
-    #         # RandomScaleTransform(scale_range=(1, 8)),  # ONLY USE FOR SPP TRAINING
-    #         transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
-    #         transforms.Grayscale(3),
-    #         transforms.ToTensor(),
-    #         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-    #     ])
-    #     transform_test_mnist = transforms.Compose([
-    #         # RandomScaleTransform(scale_range=(1, 8)),
-    #         transforms.Resize((args.img_size, args.img_size)),
-    #         transforms.Grayscale(3),
-    #         transforms.ToTensor(),
-    #         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-    #     ])
 
     transform_train_mnist = transforms.Compose([
         transforms.Resize((args.img_size * scale, args.img_size * scale)),
@@ -225,8 +195,12 @@ def setup(args):
     num_classes = 10
     if args.model_type == "Vit":
         model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes)
+        if args.training_mode == 'finetune':
+            model.load_state_dict(torch.load(args.pretrain_dir))
     else:
         model = VisionTransformerSPP(config, args.img_size, zero_head=True, num_classes=num_classes)
+        if args.training_mode == 'finetune':
+            model.load_state_dict(torch.load(args.pretrain_dir))
     model.to(args.device)
     num_params = count_parameters(model)
 
@@ -254,6 +228,7 @@ def valid(args, model, writer, test_loaders, global_step):
 
     logger.info("***** Running Validation *****")
     logger.info("  Num steps = %d", len(test_loaders)*len(test_loaders[0]))
+    logger.info("  Num steps = %d", len(test_loaders))
     logger.info("  Batch size = %d", args.eval_batch_size)
 
     model.eval()
@@ -342,6 +317,7 @@ def train(args, model):
             epoch_iterator_ls = []
             for i in range(len(train_loader)):
                 epoch_iterator = tqdm(train_loader_ls[i],
+                epoch_iterator = tqdm(train_loader[i],
                                     desc="Training (X / X Steps) (loss=X.X)",
                                     bar_format="{l_bar}{r_bar}",
                                     dynamic_ncols=True,
@@ -478,7 +454,10 @@ def main():
                         help="Resolution size")
     parser.add_argument("--random_resize", default=False, type=bool,
                         help="Random Resize On")
-
+    parser.add_argument("--training_mode", default="train", choices=["train", "finetune"],
+                        help="Training mode")
+    parser.add_argument("--pretrain_dir", required=False, type=str,
+                        help="The pretrained model directory where checkpoints will be loaded.")
     parser.add_argument("--dataset", default="mnist",
                         help="Which downstream task.")
     parser.add_argument("--train_batch_size", default=64, type=int,
