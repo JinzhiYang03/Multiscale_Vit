@@ -147,13 +147,16 @@ def get_loader_helper(args, scale=1):
 def get_loader(args):
     train_loaders = []
     test_loaders = []
-
-    for i in range(1, 5):
+    if args.model_type == 'Vit_SPP':
+        s = 5
+    else:
+        s = 2
+    for i in range(1, s):
         train_loader, test_loader = get_loader_helper(args, i)
         train_loaders.append(train_loader)
         test_loaders.append(test_loader)
-
     return train_loaders, test_loaders
+    
 
 logger = logging.getLogger(__name__)
 
@@ -224,6 +227,7 @@ def valid(args, model, writer, test_loaders, global_step):
     eval_losses = AverageMeter()
 
     logger.info("***** Running Validation *****")
+    logger.info("  Num steps = %d", len(test_loaders)*len(test_loaders[0]))
     logger.info("  Num steps = %d", len(test_loaders))
     logger.info("  Batch size = %d", args.eval_batch_size)
 
@@ -281,7 +285,7 @@ def train(args, model):
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
 
     # Prepare dataset
-    train_loader, test_loader = get_loader(args)
+    train_loader_ls, test_loader_ls = get_loader(args)
 
     # Prepare optimizer and scheduler
     optimizer = torch.optim.SGD(model.parameters(),
@@ -312,6 +316,7 @@ def train(args, model):
         if args.model_type == 'Vit_SPP':
             epoch_iterator_ls = []
             for i in range(len(train_loader)):
+                epoch_iterator = tqdm(train_loader_ls[i],
                 epoch_iterator = tqdm(train_loader[i],
                                     desc="Training (X / X Steps) (loss=X.X)",
                                     bar_format="{l_bar}{r_bar}",
@@ -353,7 +358,7 @@ def train(args, model):
                             writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
 
                         if global_step % args.eval_every == 0 and args.local_rank in [-1, 0]:
-                            accuracy = valid(args, model, writer, test_loader, global_step)
+                            accuracy = valid(args, model, writer, test_loader_ls, global_step)
                             if accuracy > best_acc:
                                 save_model(args, model)
                                 best_acc = accuracy
@@ -373,7 +378,7 @@ def train(args, model):
                             break
         else:
 
-            epoch_iterator = tqdm(train_loader[0],
+            epoch_iterator = tqdm(train_loader_ls[0],
                                 desc="Training (X / X Steps) (loss=X.X)",
                                 bar_format="{l_bar}{r_bar}",
                                 dynamic_ncols=True,
@@ -404,7 +409,7 @@ def train(args, model):
                         writer.add_scalar("train/loss", scalar_value=losses.val, global_step=global_step)
                         writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
                     if global_step % args.eval_every == 0 and args.local_rank in [-1, 0]:
-                        accuracy = valid(args, model, writer, test_loader, global_step)
+                        accuracy = valid(args, model, writer, test_loader_ls, global_step)
                         if accuracy > best_acc:
                             save_model(args, model)
                             best_acc = accuracy
