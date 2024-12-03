@@ -222,8 +222,12 @@ def setup(args):
     num_classes = 10
     if args.model_type == "Vit":
         model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes)
+        if args.training_mode == 'finetune':
+            model.load_state_dict(torch.load(args.pretrain_dir))
     else:
         model = VisionTransformerSPP(config, args.img_size, zero_head=True, num_classes=num_classes)
+        if args.training_mode == 'finetune':
+            model.load_state_dict(torch.load(args.pretrain_dir))
     model.to(args.device)
     num_params = count_parameters(model)
 
@@ -475,7 +479,10 @@ def main():
                         help="Resolution size")
     parser.add_argument("--random_resize", default=False, type=bool,
                         help="Random Resize On")
-
+    parser.add_argument("--training_mode", default="train", choices=["train", "finetune"],
+                        help="Training mode")
+    parser.add_argument("--pretrain_dir", required=False, type=str,
+                        help="The pretrained model directory where checkpoints will be loaded.")
     parser.add_argument("--dataset", default="mnist",
                         help="Which downstream task.")
     parser.add_argument("--train_batch_size", default=64, type=int,
