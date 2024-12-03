@@ -9,9 +9,12 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import LambdaLR
 from torchvision import transforms, datasets
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
+from torchvision.transforms.functional import pad
 from model import VisionTransformer, VisionTransformerSPP
 import ml_collections
 import math
+import random
+from PIL import Image
 
 def get_b16_config():
     config = ml_collections.ConfigDict()
@@ -59,7 +62,31 @@ class WarmupLinearSchedule(LambdaLR):
             return float(step) / float(max(1, self.warmup_steps))
         return max(0.0, float(self.t_total - step) / float(max(1.0, self.t_total - self.warmup_steps)))
 
-def get_loader(args):
+class RandomScaleTransform:
+    def __init__(self, scale_range=(1, 8)):
+        self.scale_range = scale_range
+
+    def __call__(self, img):
+        scale_factor = random.uniform(*self.scale_range)
+        new_size = (int(img.size[0] * scale_factor), int(img.size[1] * scale_factor))
+        img = img.resize(new_size, Image.LANCZOS)
+        return img
+
+def pad_collate(batch):
+    max_height = max(item[0].shape[1] for item in batch)
+    max_width = max(item[0].shape[2] for item in batch)
+
+    # pad all images to match max_height and max_width
+    padded_images = []
+    labels = []
+    for img, label in batch:
+        padding = (0, 0, max_width - img.shape[2], max_height - img.shape[1])  # (left, top, right, bottom)
+        padded_images.append(pad(img, padding))
+        labels.append(label)
+
+    return torch.stack(padded_images), torch.tensor(labels)
+
+def get_loader_helper(args, scale=1):
     transform_train = transforms.Compose([
         transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
         transforms.ToTensor(),
@@ -70,8 +97,39 @@ def get_loader(args):
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
     ])
+    # if args.random_resize:
+    #     transform_train_mnist = transforms.Compose([
+    #         RandomScaleTransform(scale_range=(1, 4)),  # ONLY USE FOR SPP TRAINING
+    #         # transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
+    #         transforms.Grayscale(3),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+    #     ])
+    #     transform_test_mnist = transforms.Compose([
+    #         RandomScaleTransform(scale_range=(1, 4)),
+    #         # transforms.Resize((args.img_size, args.img_size)),
+    #         transforms.Grayscale(3),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+    #     ])
+    # else:
+    #     transform_train_mnist = transforms.Compose([
+    #         # RandomScaleTransform(scale_range=(1, 8)),  # ONLY USE FOR SPP TRAINING
+    #         transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
+    #         transforms.Grayscale(3),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+    #     ])
+    #     transform_test_mnist = transforms.Compose([
+    #         # RandomScaleTransform(scale_range=(1, 8)),
+    #         transforms.Resize((args.img_size, args.img_size)),
+    #         transforms.Grayscale(3),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+    #     ])
+
     transform_train_mnist = transforms.Compose([
-        transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
+        transforms.Resize((args.img_size * scale, args.img_size * scale)),
         transforms.Grayscale(3),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
@@ -102,13 +160,12 @@ def get_loader(args):
                                    download=True,
                                    transform=transform_test_mnist) if args.local_rank in [-1, 0] else None
 
-
-
     train_sampler = RandomSampler(trainset)
     test_sampler = SequentialSampler(testset)
     train_loader = DataLoader(trainset,
                               sampler=train_sampler,
                               batch_size=args.train_batch_size,
+                              collate_fn=pad_collate,
                               pin_memory=True)
     test_loader = DataLoader(testset,
                              sampler=test_sampler,
@@ -116,6 +173,17 @@ def get_loader(args):
                              pin_memory=True) if testset is not None else None
 
     return train_loader, test_loader
+
+def get_loader(args):
+    train_loaders = []
+    test_loaders = []
+
+    for i in range(1, 5):
+        train_loader, test_loader = get_loader_helper(args, i)
+        train_loaders.append(train_loader)
+        test_loaders.append(test_loader)
+
+    return train_loaders, test_loaders
 
 logger = logging.getLogger(__name__)
 
@@ -181,45 +249,46 @@ def set_seed(args):
     if args.n_gpu > 0:
         torch.cuda.manual_seed_all(args.seed)
 
-def valid(args, model, writer, test_loader, global_step):
+def valid(args, model, writer, test_loaders, global_step):
     # Validation!
     eval_losses = AverageMeter()
 
     logger.info("***** Running Validation *****")
-    logger.info("  Num steps = %d", len(test_loader))
+    logger.info("  Num steps = %d", len(test_loaders))
     logger.info("  Batch size = %d", args.eval_batch_size)
 
     model.eval()
     all_preds, all_label = [], []
-    epoch_iterator = tqdm(test_loader,
-                          desc="Validating... (loss=X.X)",
-                          bar_format="{l_bar}{r_bar}",
-                          dynamic_ncols=True,
-                          disable=args.local_rank not in [-1, 0])
-    loss_fct = torch.nn.CrossEntropyLoss()
-    for step, batch in enumerate(epoch_iterator):
-        batch = tuple(t.to(args.device) for t in batch)
-        x, y = batch
-        with torch.no_grad():
-            logits = model(x)[0]
-
-            eval_loss = loss_fct(logits, y)
-            eval_losses.update(eval_loss.item())
-
-            preds = torch.argmax(logits, dim=-1)
-
-        if len(all_preds) == 0:
-            all_preds.append(preds.detach().cpu().numpy())
-            all_label.append(y.detach().cpu().numpy())
-        else:
-            all_preds[0] = np.append(
-                all_preds[0], preds.detach().cpu().numpy(), axis=0
-            )
-            all_label[0] = np.append(
-                all_label[0], y.detach().cpu().numpy(), axis=0
-            )
-        epoch_iterator.set_description("Validating... (loss=%2.5f)" % eval_losses.val)
-
+    for test_loader in test_loaders:
+        epoch_iterator = tqdm(test_loader,
+                              desc="Validating... (loss=X.X)",
+                              bar_format="{l_bar}{r_bar}",
+                              dynamic_ncols=True,
+                              disable=args.local_rank not in [-1, 0])
+        loss_fct = torch.nn.CrossEntropyLoss()
+        for step, batch in enumerate(epoch_iterator):
+            batch = tuple(t.to(args.device) for t in batch)
+            x, y = batch
+            with torch.no_grad():
+                logits = model(x)[0]
+    
+                eval_loss = loss_fct(logits, y)
+                eval_losses.update(eval_loss.item())
+    
+                preds = torch.argmax(logits, dim=-1)
+    
+            if len(all_preds) == 0:
+                all_preds.append(preds.detach().cpu().numpy())
+                all_label.append(y.detach().cpu().numpy())
+            else:
+                all_preds[0] = np.append(
+                    all_preds[0], preds.detach().cpu().numpy(), axis=0
+                )
+                all_label[0] = np.append(
+                    all_label[0], y.detach().cpu().numpy(), axis=0
+                )
+            epoch_iterator.set_description("Validating... (loss=%2.5f)" % eval_losses.val)
+    
     all_preds, all_label = all_preds[0], all_label[0]
     accuracy = simple_accuracy(all_preds, all_label)
 
@@ -270,58 +339,127 @@ def train(args, model):
 
     while True:
         model.train()
-        epoch_iterator = tqdm(train_loader,
-                              desc="Training (X / X Steps) (loss=X.X)",
-                              bar_format="{l_bar}{r_bar}",
-                              dynamic_ncols=True,
-                              disable=args.local_rank not in [-1, 0])
-        for step, batch in enumerate(epoch_iterator):
-            batch = tuple(t.to(args.device) for t in batch)
-            x, y = batch
-            loss = model(x, y)
-
-            if args.gradient_accumulation_steps > 1:
-                loss = loss / args.gradient_accumulation_steps
+        if args.model_type == 'Vit_SPP':
+            epoch_iterator_ls = []
+            for i in range(len(train_loader)):
+                epoch_iterator = tqdm(train_loader[i],
+                                    desc="Training (X / X Steps) (loss=X.X)",
+                                    bar_format="{l_bar}{r_bar}",
+                                    dynamic_ncols=True,
+                                    disable=args.local_rank not in [-1, 0])
+                epoch_iterator_ls.append(epoch_iterator)
             
-            loss.backward()
+            from itertools import zip_longest
+            for step, batches in enumerate(zip_longest(*epoch_iterator_ls, fillvalue=None)):
+                for i, batch in enumerate(batches):
+                    if batch is None:
+                        # Skip if the iterator is exhausted
+                        continue
 
-            if (step + 1) % args.gradient_accumulation_steps == 0:
-                losses.update(loss.item() * args.gradient_accumulation_steps)
+                    # Move data to the correct device
+                    batch = tuple(t.to(args.device) for t in batch)
+                    x, y = batch
+                    loss = model(x, y)
+
+                    if args.gradient_accumulation_steps > 1:
+                        loss = loss / args.gradient_accumulation_steps
+
+                    loss.backward()
+
+                    if (step + 1) % args.gradient_accumulation_steps == 0:
+                        losses.update(loss.item() * args.gradient_accumulation_steps)
+
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+                        optimizer.step()
+                        scheduler.step()
+                        optimizer.zero_grad()
+                        global_step += 1
+
+                        epoch_iterator_ls[i].set_description(
+                            "Training (%d / %d Steps) (loss=%2.5f)" % (global_step, t_total, losses.val)
+                        )
+                        if args.local_rank in [-1, 0]:
+                            writer.add_scalar("train/loss", scalar_value=losses.val, global_step=global_step)
+                            writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
+
+                        if global_step % args.eval_every == 0 and args.local_rank in [-1, 0]:
+                            accuracy = valid(args, model, writer, test_loader, global_step)
+                            if accuracy > best_acc:
+                                save_model(args, model)
+                                best_acc = accuracy
+                                patience_counter = 0  # Reset patience counter if accuracy improves
+                            else:
+                                patience_counter += 1
+                                logger.info(f"No improvement in accuracy for {patience_counter} evaluations.")
+
+                            # Early stopping
+                            if patience_counter >= args.patience:
+                                logger.info("Early stopping triggered!")
+                                return
+
+                            model.train()
+
+                        if global_step % t_total == 0:
+                            break
+        else:
+
+            epoch_iterator = tqdm(train_loader[0],
+                                desc="Training (X / X Steps) (loss=X.X)",
+                                bar_format="{l_bar}{r_bar}",
+                                dynamic_ncols=True,
+                                disable=args.local_rank not in [-1, 0])
+            for step, batch in enumerate(epoch_iterator):
+                batch = tuple(t.to(args.device) for t in batch)
+                x, y = batch
+                loss = model(x, y)
+
+                if args.gradient_accumulation_steps > 1:
+                    loss = loss / args.gradient_accumulation_steps
                 
-                torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
-                optimizer.step()
-                scheduler.step()
-                optimizer.zero_grad()
-                global_step += 1
+                loss.backward()
 
-                epoch_iterator.set_description(
-                    "Training (%d / %d Steps) (loss=%2.5f)" % (global_step, t_total, losses.val)
-                )
-                if args.local_rank in [-1, 0]:
-                    writer.add_scalar("train/loss", scalar_value=losses.val, global_step=global_step)
-                    writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
-                if global_step % args.eval_every == 0 and args.local_rank in [-1, 0]:
-                    accuracy = valid(args, model, writer, test_loader, global_step)
-                    if accuracy > best_acc:
-                        save_model(args, model)
-                        best_acc = accuracy
-                        patience_counter = 0  # Reset patience counter if accuracy improves
-                    else:
-                        patience_counter += 1
-                        logger.info(f"No improvement in accuracy for {patience_counter} evaluations.")
+                if (step + 1) % args.gradient_accumulation_steps == 0:
+                    losses.update(loss.item() * args.gradient_accumulation_steps)
                     
-                    # Early stopping
-                    if patience_counter >= args.patience:
-                        logger.info("Early stopping triggered!")
-                        return
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+                    optimizer.step()
+                    scheduler.step()
+                    optimizer.zero_grad()
+                    global_step += 1
 
-                    model.train()
+                    epoch_iterator.set_description(
+                        "Training (%d / %d Steps) (loss=%2.5f)" % (global_step, t_total, losses.val)
+                    )
+                    if args.local_rank in [-1, 0]:
+                        writer.add_scalar("train/loss", scalar_value=losses.val, global_step=global_step)
+                        writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
+                    if global_step % args.eval_every == 0 and args.local_rank in [-1, 0]:
+                        accuracy = valid(args, model, writer, test_loader, global_step)
+                        if accuracy > best_acc:
+                            save_model(args, model)
+                            best_acc = accuracy
+                            patience_counter = 0  # Reset patience counter if accuracy improves
+                        else:
+                            patience_counter += 1
+                            logger.info(f"No improvement in accuracy for {patience_counter} evaluations.")
+                        
+                        # Early stopping
+                        if patience_counter >= args.patience:
+                            logger.info("Early stopping triggered!")
+                            return
 
-                if global_step % t_total == 0:
-                    break
+                        model.train()
+
+                    if global_step % t_total == 0:
+                        break
         losses.reset()
         if global_step % t_total == 0:
             break
+
+    if args.local_rank in [-1, 0]:
+        writer.close()
+    logger.info("Best Accuracy: \t%f" % best_acc)
+    logger.info("End Training!")
 
     if args.local_rank in [-1, 0]:
         writer.close()
@@ -339,12 +477,12 @@ def main():
                         help="The output directory where checkpoints will be written.")
     parser.add_argument("--img_size", default=28, type=int,
                         help="Resolution size")
-    
+    parser.add_argument("--random_resize", default=False, type=bool,
+                        help="Random Resize On")
     parser.add_argument("--training_mode", default="train", choices=["train", "finetune"],
                         help="Training mode")
     parser.add_argument("--pretrain_dir", required=False, type=str,
                         help="The pretrained model directory where checkpoints will be loaded.")
-
     parser.add_argument("--dataset", default="mnist",
                         help="Which downstream task.")
     parser.add_argument("--train_batch_size", default=64, type=int,
